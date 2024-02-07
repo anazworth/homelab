@@ -1,0 +1,120 @@
+---
+- name: Provision server
+  hosts: test
+  gather_facts: yes
+  become: true
+  tasks:
+    - name: Ping server
+      ansible.builtin.ping:
+
+    - name: Save VERSION_CODENAME as a variable
+      set_fact:
+        version_codename: "{{ ansible_distribution_release }}"
+        distro: "{{ ansible_facts['distribution'] }}"
+
+    - name: Display VERSION_CODENAME
+      debug:
+        var: version_codename
+
+    - name: Display distro
+      debug:
+        var: distro
+
+    - name: Set hostname to curry-home
+      ansible.builtin.hostname:
+        name: curry-home-test
+
+    - name: Install epel-release
+      ansible.builtin.package:
+        name: epel-release
+        state: present
+
+    # - name: Install avahi-daemon
+    #   ansible.builtin.package:
+    #     name: avahi-daemon
+    #     state: present
+
+    # - name: Install mergerfs
+    #   ansible.builtin.package:
+    #     name: mergerfs
+    #     state: present
+
+    - name: Install Cockpit
+      ansible.builtin.package:
+        name: cockpit
+        state: present
+
+    - name: Install Cockpit Machines
+      ansible.builtin.package:
+        name: cockpit-machines
+        state: present
+
+    - name: Start and enable cockpit
+      ansible.builtin.service:
+        name: cockpit
+        state: started
+        enabled: yes
+
+    - name: Install vim, tmux, fuse, xfsprogs
+      ansible.builtin.package:
+        name:
+          - vim
+          - tmux
+          - fuse
+          - xfsprogs
+        state: present
+
+    - name: Install Docker prereqs
+      ansible.builtin.package:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - python3-pip
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.yum_repository:
+        name: docker-ce
+        description: Docker CE Stable - $basearch
+        baseurl: https://download.docker.com/linux/centos/9/$basearch/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        enabled: yes
+
+    - name: Install Docker CE
+      ansible.builtin.package:
+        name: docker-ce
+        state: present
+
+    - name: Install Docker Compose
+      ansible.builtin.command:
+        cmd: pip3 install docker-compose
+
+    - name: Start and enable Docker service
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull portainer:latest
+      community.general.docker_image:
+        name: portainer/portainer-ce:latest
+        source: pull
+        state: present
+
+    - name: Create portainer volume
+      community.general.docker_volume:
+        name: portainer_data
+
+    - name: Run portainer container
+      community.general.docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        restart_policy: always
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data
+        ports:
+          - "8000:8000"
+          - "9443:9443"

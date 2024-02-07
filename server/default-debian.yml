@@ -1,0 +1,162 @@
+---
+- name: provision server
+  hosts: all
+  gather_facts: yes
+  become: true
+  tasks:
+    - name: Ping server
+      ansible.builtin.ping:
+
+    - name: Save VERSION_CODENAME as a variable
+      set_fact:
+        version_codename: "{{ ansible_distribution_release }}"
+        distro: "{{ ansible_facts['distribution'] }}"
+
+    - name: Display VERSION_CODENAME
+      debug:
+        var: version_codename
+
+    - name: Display distro
+      debug:
+        var: distro
+
+    - name: Set hostname to curry-home
+      ansible.builtin.hostname:
+        name: curry-home
+
+    - name: Install aptitude
+      apt:
+        name: aptitude
+        state: latest
+        update_cache: true
+
+    - name: Add backports repository
+      apt_repository:
+        repo: "deb http://deb.debian.org/debian {{ ansible_lsb.codename }}-backports main"
+        state: present
+
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: yes
+
+    - name: Install avahi-daemon
+      apt:
+        name: avahi-daemon
+        state: present
+
+    - name: Check if mergerfs is installed
+      ansible.builtin.command:
+        cmd: "which mergerfs"
+      register: mergerfs_status
+      ignore_errors: yes
+
+    - name: Download mergerfs if not installed
+      ansible.builtin.get_url:
+        url: "https://github.com/trapexit/mergerfs/releases/download/2.38.0/mergerfs_2.38.0.debian-bookworm_amd64.deb"
+        dest: "/tmp/mergerfs.deb"
+      when: mergerfs_status.rc != 0
+
+    - name: Install mergerfs if not installed
+      ansible.builtin.command:
+        cmd: "sudo dpkg -i /tmp/mergerfs.deb"
+      when: mergerfs_status.rc != 0
+
+    - name: Cleanup downloaded package
+      ansible.builtin.file:
+        path: "/tmp/mergerfs.deb"
+        state: absent
+      when: mergerfs_status.rc != 0
+
+    - name: Install Cockpit
+      apt:
+        name: cockpit
+        state: present
+        update_cache: true
+        default_release: "{{ version_codename }}-backports"
+
+    - name: Install Cockpit Machines
+      apt:
+        name: cockpit-machines
+        state: present
+        update_cache: true
+        default_release: "{{ version_codename }}-backports"
+
+    - name: Install vim, etc
+      apt:
+        pkg:
+          - vim
+          - tmux
+          - fuse
+          - xfsprogs
+        state: present
+
+    - name: Install Docker prereqs
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+        state: latest
+        update_cache: true
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/debian bookworm stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: latest
+        update_cache: true
+
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+        extra_args: "--break-system-packages"
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull portainer:latest
+      docker_image:
+        name: portainer/portainer-ce:latest
+        source: pull
+        state: present
+
+    - name: Create portainer volume
+      docker_volume:
+        name: portainer_data
+
+    - name: Run portainer container
+      docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        restart_policy: always
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data
+        ports:
+          - "8000:8000"
+          - "9443:9443"

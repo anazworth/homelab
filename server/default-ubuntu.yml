@@ -1,0 +1,159 @@
+---
+- name: Provision server
+  hosts: all
+  gather_facts: yes
+  become: true
+  tasks:
+    - name: Ping server
+      ansible.builtin.ping:
+
+    - name: Save VERSION_CODENAME as a variable
+      set_fact:
+        version_codename: "{{ ansible_distribution_release }}"
+        distro: "{{ ansible_facts['distribution'] }}"
+
+    - name: Display VERSION_CODENAME
+      debug:
+        var: version_codename
+
+    - name: Display distro
+      debug:
+        var: distro
+
+    - name: Set hostname to curry-home
+      ansible.builtin.hostname:
+        name: curry-home
+
+    - name: Install aptitude
+      ansible.builtin.package:
+        name: aptitude
+        state: latest
+        update_cache: yes
+
+    - name: Add backports repository
+      apt_repository:
+        repo: "deb http://archive.ubuntu.com/ubuntu/ {{ version_codename }}-backports main"
+        state: present
+
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: yes
+
+    - name: Install avahi-daemon
+      ansible.builtin.package:
+        name: avahi-daemon
+        state: present
+
+    - name: Check if mergerfs is installed
+      ansible.builtin.command:
+        cmd: "which mergerfs"
+      register: mergerfs_status
+      ignore_errors: yes
+
+    - name: Download mergerfs if not installed
+      ansible.builtin.get_url:
+        url: "https://github.com/trapexit/mergerfs/releases/download/2.39.0/mergerfs_2.39.0.ubuntu-jammy_amd64.deb"
+        dest: "/tmp/mergerfs.deb"
+      when: mergerfs_status.rc != 0
+
+    - name: Install mergerfs if not installed
+      ansible.builtin.command:
+        cmd: "sudo dpkg -i /tmp/mergerfs.deb"
+      when: mergerfs_status.rc != 0
+
+    - name: Cleanup downloaded package
+      ansible.builtin.file:
+        path: "/tmp/mergerfs.deb"
+        state: absent
+      when: mergerfs_status.rc != 0
+
+    - name: Install Cockpit
+      ansible.builtin.package:
+        name: cockpit
+        state: present
+        update_cache: yes
+
+    - name: Install Cockpit Machines
+      ansible.builtin.package:
+        name: cockpit-machines
+        state: present
+        update_cache: yes
+
+    - name: Install vim, etc
+      ansible.builtin.package:
+        name:
+          - vim
+          - tmux
+          - fuse
+          - xfsprogs
+        state: present
+
+    - name: Install Docker prereqs
+      ansible.builtin.package:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+        state: latest
+        update_cache: yes
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ version_codename }} stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          # - containerd.io
+          # - docker-buildx
+          - docker-compose
+        state: latest
+        update_cache: yes
+
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name: docker
+        extra_args: "--no-cache-dir"
+
+    - name: Start Docker service
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull portainer:latest
+      community.general.docker_image:
+        name: portainer/portainer-ce:latest
+        source: pull
+        state: present
+
+    - name: Create portainer volume
+      community.general.docker_volume:
+        name: portainer_data
+
+    - name: Run portainer container
+      community.general.docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        restart_policy: always
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data
+        ports:
+          - "8000:8000"
+          - "9443:9443"

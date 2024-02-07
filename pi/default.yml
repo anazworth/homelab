@@ -1,0 +1,178 @@
+---
+- name: provision Raspberry Pi 4
+  hosts: all
+  gather_facts: yes
+  become: true
+
+  environment:
+    DOCKER_CLIENT_TIMEOUT: 120
+    COMPOSE_HTTP_TIMEOUT: 120
+
+  tasks:
+    - name: Ping server
+      ansible.builtin.ping:
+
+    - name: Save VERSION_CODENAME as a variable
+      set_fact:
+        version_codename: "{{ ansible_distribution_release }}"
+        distro: "{{ ansible_facts['distribution'] }}"
+
+    - name: Display VERSION_CODENAME
+      debug:
+        var: version_codename
+
+    - name: Display distro
+      debug:
+        var: distro
+
+    - name: Set hostname to currypi
+      ansible.builtin.hostname:
+        name: currypi
+
+    - name: Install aptitude
+      apt:
+        name: aptitude
+        state: latest
+        update_cache: true
+
+    - name: Add backports repository
+      apt_repository:
+        repo: "deb http://deb.debian.org/debian {{ ansible_lsb.codename }}-backports main"
+        state: present
+
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: yes
+
+    - name: Install Cockpit
+      apt:
+        name: cockpit
+        state: present
+        update_cache: true
+        default_release: "{{ version_codename }}-backports"
+
+    - name: Install Docker prereqs
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+        state: latest
+        update_cache: true
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/debian bookworm stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: latest
+        update_cache: true
+
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+        extra_args: "--break-system-packages"
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull Portainer image
+      docker_image:
+        name: portainer/portainer-ce:latest
+        source: pull
+        state: present
+
+    - name: Create Portainer volume
+      docker_volume:
+        name: portainer_data
+
+    - name: Run Portainer container
+      docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        restart_policy: always
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data
+        ports:
+          - "8000:8000"
+          - "9443:9443"
+
+    - name: Pull Tautulli image
+      docker_image:
+        name: tautulli/tautulli:latest
+        source: pull
+        state: present
+
+    - name: Run Tautulli continer
+      docker_container:
+        name: tautulli
+        image: tautulli/tautulli:latest
+        restart_policy: unless-stopped
+        volumes:
+          - /home/curry/data/tautulli_data/_data:/config
+        ports:
+          - "8181:8181"
+        env:
+          TZ: America/New_York
+
+    - name: Pull Overseerr image
+      docker_image:
+        name: linuxserver/overseerr:latest
+        source: pull
+        state: present
+
+    - name: Run Overseerr container
+      docker_container:
+        name: overseerr
+        image: linuxserver/overseerr:latest
+        restart_policy: unless-stopped
+        volumes:
+          - /home/curry/data/overseerr_data/_data:/config
+        ports:
+          - "5055:5055"
+        env:
+          TZ: America/New_York
+
+    - name: Pull Doplarr image
+      docker_image:
+        name: linuxserver/doplarr:latest
+        source: pull
+        state: present
+
+    - name: Run Doplarr container
+      docker_container:
+        name: doplarr
+        image: linuxserver/doplarr:latest
+        restart_policy: unless-stopped
+        env:
+          TZ: America/New_York
+          OVERSEERR__URL:
+          OVERSEERR__API:
+          DISCORD__TOKEN:
+          DISCORD_REQUESTED_MSG_STYLE: :embed
+          OVERSEER__DEFAULT_ID: "2"

@@ -1,0 +1,123 @@
+---
+- name: "Localhost test"
+  hosts: localhost
+  connection: local
+  become: false
+
+  pre_tasks:
+    - name: Ensuring Homebrew Is Installed
+      stat:
+        path: /opt/homebrew
+      register: homebrew_check
+
+    - name: Installing Homebrew if not already installed
+      shell: /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+      when:
+        - not homebrew_check.stat.exists
+
+  tasks:
+    - name: Install Neovim, Git, asdf, tldr, htop
+      homebrew:
+        name:
+          - neovim
+          - git
+          - asdf
+          - tldr
+          - htop
+        state: present
+
+    - name: Check if Firefox is installed
+      stat:
+        path: /Applications/Firefox.app
+      register: firefox_check
+
+    - name: Install Firefox
+      homebrew_cask:
+        name: firefox
+        state: present
+      when:
+        - not firefox_check.stat.exists
+
+    - name: Check if iTerm2 is installed
+      stat:
+        path: /Applications/iTerm.app
+      register: iterm_check
+
+    - name: Install iTerm2
+      homebrew_cask:
+        name: iterm2
+        state: present
+      when:
+        - not iterm_check.stat.exists
+
+    - name: Check if VS Code is installed
+      stat:
+        path: /Applications/Visual Studio Code.app
+      register: vscode_check
+
+    - name: Install VS Code
+      homebrew_cask:
+        name: visual-studio-code
+        state: present
+      when:
+        - not vscode_check.stat.exists
+
+    - name: Check if Docker is installed
+      stat:
+        path: /Applications/Docker.app
+      register: docker_check
+
+    - name: Install Docker
+      homebrew_cask:
+        name: docker
+        state: present
+      when:
+        - not docker_check.stat.exists
+
+    - name: Check if Rectangle is installed
+      stat:
+        path: /Applications/Rectangle.app
+      register: rectangle_check
+
+    - name: Install Rectangle
+      homebrew_cask:
+        name: rectangle
+        state: present
+      when:
+        - not rectangle_check.stat.exists
+
+    - name: Check if Stats is installed
+      stat:
+        path: /Applications/Stats.app
+      register: stats_check
+
+    - name: Install Stats
+      homebrew_cask:
+        name: stats
+        state: present
+      when:
+        - not stats_check.stat.exists
+
+    - name: Check if Karabiner-elements is installed
+      stat:
+        path: /Applications/Karabiner-Elements.app
+      register: karabiner_check
+
+    - name: Install Karabiner-elements
+      homebrew_cask:
+        name: karabiner-elements
+        state: present
+      when:
+        - not karabiner_check.stat.exists
+
+    - name: Check if Tailscale is installed
+      stat:
+        path: /Applications/Tailscale.app
+      register: tailscale_check
+
+    - name: Install Tailscale
+      homebrew_cask:
+        name: tailscale
+        state: present
+      when:
+        - not tailscale_check.stat.exists
